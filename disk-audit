@@ -1,0 +1,53 @@
+#!/bin/bash
+
+set -e
+
+echo "Scanning for VMs using Premium SSD (OS or Data disks)..."
+echo "--------------------------------------------------------------------------"
+
+# Get all VM names and resource groups
+az vm list --query "[].{name:name, rg:resourceGroup}" -o tsv | while read name rg
+do
+  # Get OS disk type
+  osDiskType=$(az vm show -g "$rg" -n "$name" \
+    --query "storageProfile.osDisk.managedDisk.storageAccountType" -o tsv)
+
+  # Get data disk types
+  dataDiskTypes=$(az vm show -g "$rg" -n "$name" \
+    --query "storageProfile.dataDisks[].managedDisk.storageAccountType" -o tsv)
+
+  diskMatch=""
+
+  # Check OS disk
+  if [[ "$osDiskType" == "Premium_LRS" ]]; then
+    diskMatch="OS"
+  fi
+
+  # Check Data disks
+  if echo "$dataDiskTypes" | grep -q "Premium_LRS"; then
+    if [[ -n "$diskMatch" ]]; then
+      diskMatch="Both"
+    else
+      diskMatch="Data"
+    fi
+  fi
+
+  # If match found
+  if [[ -n "$diskMatch" ]]; then
+
+    location=$(az vm show -g "$rg" -n "$name" --query "location" -o tsv)
+    tags=$(az vm show -g "$rg" -n "$name" --query "tags" -o json)
+
+    if [[ "$tags" == "null" ]]; then
+      tags="No Tags"
+    fi
+
+    echo "VM Name        : $name"
+    echo "Resource Group : $rg"
+    echo "Location       : $location"
+    echo "Premium Disk   : $diskMatch"
+    echo "Tags           : $tags"
+    echo "--------------------------------------------------------------------------"
+  fi
+
+done
